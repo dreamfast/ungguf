@@ -1,0 +1,227 @@
+services:
+  convert-qwen35:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/output
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+      - CUDA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - gguf_to_safetensors_qwen35.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --output
+      - /output
+      - --reference-model
+      - /ref
+      - --shard-size-mb
+      - "${SHARD_SIZE_MB:-4500}"
+
+  verify:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/converted:ro
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+      - ${RESULTS_DIR:-./results}:/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - verify_conversion_qwen35.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --converted
+      - /converted
+      - --reference
+      - /ref
+      - --output
+      - /results/conversion_verification.json
+
+  inspect:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    command:
+      - python3
+      - /app/gguf_metadata_dump.py
+      - /input/${GGUF_FILE:-model.gguf}
+
+  convert-glm47:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/output
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+      - CUDA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - gguf_to_safetensors_glm47.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --output
+      - /output
+      - --reference-model
+      - /ref
+      - --shard-size-mb
+      - "${SHARD_SIZE_MB:-4500}"
+
+  verify-glm47:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/converted:ro
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+      - ${RESULTS_DIR:-./results}:/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - verify_conversion_glm47.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --converted
+      - /converted
+      - --reference
+      - /ref
+      - --output
+      - /results/glm47_verification.json
+
+  convert-qwen3:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/output
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+      - CUDA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - gguf_to_safetensors_qwen3.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --output
+      - /output
+      - --reference-model
+      - /ref
+      - --shard-size-mb
+      - "${SHARD_SIZE_MB:-4500}"
+
+  verify-qwen3:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/converted:ro
+      - ${RESULTS_DIR:-./results}:/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - verify_conversion_qwen3.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --converted
+      - /converted
+
+  test:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./gguf_metadata_dump.py:/app/gguf_metadata_dump.py:ro
+    working_dir: /app
+    environment:
+      - PYTHONUNBUFFERED=1
+    command:
+      - python3
+      - -m
+      - pytest
+      - /app/tests/
+      - -v
+      - --tb=short
+
+  lint:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./gguf_metadata_dump.py:/app/gguf_metadata_dump.py:ro
+    working_dir: /app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - RUFF_CACHE_DIR=/tmp/.ruff_cache
+      - MYPY_CACHE_DIR=/tmp/.mypy_cache
+    command:
+      - sh
+      - -c
+      - "ruff check . && ruff format --check . && mypy src/ gguf_metadata_dump.py"

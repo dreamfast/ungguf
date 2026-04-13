@@ -1,0 +1,95 @@
+# pyproject.toml — Single source of truth for ruff, mypy, and pytest configuration.
+# All tools run inside Docker containers; see ungguf.sh for lint/format/test commands.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 99
+src = ["src", "."]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "SIM",   # flake8-simplify
+    "RUF",   # Ruff-specific rules
+    "N",     # pep8-naming
+    "PL",    # pylint
+    "PERF",  # perflint
+    "PTH",   # flake8-use-pathlib
+    "T20",   # flake8-print (flag print() in library code)
+    "S",     # flake8-bandit (security)
+]
+ignore = [
+    "E501",    # line too long — handled by formatter
+    "PLR0913", # too many arguments — converter CLI entry points need them
+    "PLR0912", # too many branches — converter main() functions are inherently branchy
+    "PLR0915", # too many statements — same rationale as above
+    "S603",    # subprocess call with shell=False — not applicable here
+    "S607",    # partial executable path — not applicable here
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # assert allowed in tests
+    "PLR2004", # magic values allowed in tests
+    "T20",     # print() allowed in tests
+]
+"src/gguf_to_safetensors_*.py" = [
+    "T20",     # print() is the progress output mechanism in converters
+]
+"src/verify_conversion_*.py" = [
+    "T20",     # print() is the progress output mechanism in verifiers
+]
+"src/vllm_sanity.py" = [
+    "T20",     # print() is the progress output mechanism
+]
+"src/verify_sha256.py" = [
+    "T20",     # print() used for hash output
+]
+"gguf_metadata_dump.py" = [
+    "T20",     # print() is the entire output mechanism
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "common",
+    "mappings_qwen3",
+    "mappings_qwen35",
+    "mappings_glm47",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "gguf",
+    "gguf.*",
+    "safetensors",
+    "safetensors.*",
+    "vllm",
+    "vllm.*",
+    "tqdm",
+    "tqdm.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-v --tb=short"
