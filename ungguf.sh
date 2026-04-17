@@ -9,8 +9,10 @@ RESET='\033[0m'
 if [ -t 1 ]; then
 	echo -e "${CYAN}"
 	cat <<'BANNER'
- _| _  _  _ |   _  _  _|
-(_|(_)(_)_\|  _)(/_(_||  v0.1.0
+                _ 
+   ._  _  _   _|_ 
+|_|| |(_|(_||_||  
+       _| _|  v0.1.0
 BANNER
 	echo -e "${RESET}"
 fi
