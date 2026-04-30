@@ -12,7 +12,8 @@ RUN --mount=type=cache,target=/root/.cache/pip pip3 install -r requirements.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip pip3 install vllm && \
     pip3 uninstall -y torchao 2>/dev/null || true && \
-    pip3 install 'transformers>=5.5.3' 'huggingface_hub>=1.5.0,<2.0'
+    pip3 install 'transformers>=5.5.3' 'huggingface_hub>=1.5.0,<2.0' && \
+    pip3 install bitsandbytes accelerate
 
 # Create non-root user matching host UID/GID
 RUN groupadd -g "$HOST_GID" appuser 2>/dev/null || true && \

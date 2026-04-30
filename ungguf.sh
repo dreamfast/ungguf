@@ -156,6 +156,71 @@ cmd_convert_qwen3() {
 	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm convert-qwen3 "${cmd[@]}"
 }
 
+cmd_convert_qwen36() {
+	local keep_fp16=false
+	if [[ "${1:-}" == "--keep-fp16" ]]; then
+		keep_fp16=true
+		shift
+	fi
+	[[ $# -ge 3 ]] || die "Usage: ungguf convert-qwen36 [--keep-fp16] <gguf_file> <output_dir> <ref_model_dir>"
+	local gguf_path="$1"
+	local output_dir="$2"
+	local ref_dir="$3"
+
+	local gguf_dir gguf_file
+	read -r gguf_dir gguf_file <<<"$(split_path "$gguf_path")"
+	output_dir="$(cd "$output_dir" && pwd)"
+	ref_dir="$(cd "$ref_dir" && pwd)"
+
+	export GPU="${GPU:-0}"
+	export SHARD_SIZE_MB="${SHARD_SIZE_MB:-4500}"
+	export GGUF_DIR="$gguf_dir"
+	export GGUF_FILE="$gguf_file"
+	export OUTPUT_DIR="$output_dir"
+	export REF_MODEL_DIR="$ref_dir"
+
+	local cmd=(python3 gguf_to_safetensors_qwen36.py
+		--gguf "/input/$gguf_file" --output /output
+		--reference-model /ref --shard-size-mb "${SHARD_SIZE_MB:-4500}")
+	if $keep_fp16; then cmd+=(--keep-fp16); fi
+
+	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm convert-qwen36 "${cmd[@]}"
+}
+
+cmd_verify_qwen36() {
+	local keep_fp16=false
+	if [[ "${1:-}" == "--keep-fp16" ]]; then
+		keep_fp16=true
+		shift
+	fi
+	[[ $# -ge 3 ]] || die "Usage: ungguf verify-qwen36 [--keep-fp16] <gguf_file> <converted_dir> <ref_model_dir> [results_dir]"
+	local gguf_path="$1"
+	local converted_dir="$2"
+	local ref_dir="$3"
+	local results_dir="${4:-$(pwd)/results}"
+
+	local gguf_dir gguf_file
+	read -r gguf_dir gguf_file <<<"$(split_path "$gguf_path")"
+	converted_dir="$(cd "$converted_dir" && pwd)"
+	ref_dir="$(cd "$ref_dir" && pwd)"
+	mkdir -p "$results_dir"
+	results_dir="$(cd "$results_dir" && pwd)"
+
+	export GPU="${GPU:-0}"
+	export GGUF_DIR="$gguf_dir"
+	export GGUF_FILE="$gguf_file"
+	export OUTPUT_DIR="$converted_dir"
+	export REF_MODEL_DIR="$ref_dir"
+	export RESULTS_DIR="$results_dir"
+
+	local cmd=(python3 verify_conversion_qwen36.py
+		--gguf "/input/$gguf_file" --converted /converted
+		--reference /ref --output /results/qwen36_verification.json)
+	if $keep_fp16; then cmd+=(--keep-fp16); fi
+
+	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm verify-qwen36 "${cmd[@]}"
+}
+
 cmd_verify() {
 	local keep_fp16=false
 	if [[ "${1:-}" == "--keep-fp16" ]]; then
@@ -365,6 +430,83 @@ cmd_sanity() {
 		"${extra_args[@]}"
 }
 
+cmd_chat() {
+	[[ $# -ge 1 ]] || die "Usage: ungguf chat <model_dir> [--bnb4] [--max-new-tokens N]"
+	local model_path="$1"
+	shift
+
+	local quant=""
+	local max_new_tokens=512
+	while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--bnb4)
+		quant="bnb4"
+		shift
+		;;
+	--max-new-tokens)
+		max_new_tokens="$2"
+		shift 2
+		;;
+	*) die "Unknown argument: $1" ;;
+	esac
+	done
+
+	model_path="$(cd "$model_path" && pwd)"
+
+	_ensure_vllm_image
+
+	local gpu="${GPU:-all}"
+
+	local -a python_cmd=()
+	if [[ "$quant" == "bnb4" ]]; then
+		echo -e "${BOLD}Chat with BNB-4bit quantization (GPU=${gpu})${RESET}"
+		python_cmd=(python3 -c "
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+import torch
+bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
+print('Loading model in BNB-4bit...')
+tok = AutoTokenizer.from_pretrained('/model')
+model = AutoModelForCausalLM.from_pretrained('/model', quantization_config=bnb, device_map='auto')
+print('Ready! Type your message (Ctrl+C to quit)')
+while True:
+    msg = input('\nYou: ')
+    messages = [{'role':'user','content':msg}]
+    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tok(text, return_tensors='pt').to(model.device)
+    out = model.generate(**inputs, max_new_tokens=${max_new_tokens}, do_sample=True, temperature=0.7)
+    print('Bot:', tok.decode(out[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True))
+")
+	else
+		echo -e "${BOLD}Chat with BF16 (GPU=${gpu})${RESET}"
+		python_cmd=(python3 -c "
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+print('Loading model in BF16...')
+tok = AutoTokenizer.from_pretrained('/model')
+model = AutoModelForCausalLM.from_pretrained('/model', torch_dtype=torch.bfloat16, device_map='auto')
+print('Ready! Type your message (Ctrl+C to quit)')
+while True:
+    msg = input('\nYou: ')
+    messages = [{'role':'user','content':msg}]
+    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = tok(text, return_tensors='pt').to(model.device)
+    out = model.generate(**inputs, max_new_tokens=${max_new_tokens}, do_sample=True, temperature=0.7)
+    print('Bot:', tok.decode(out[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True))
+")
+	fi
+
+	docker run --rm --runtime=nvidia -it \
+		--user "${HOST_UID}:${HOST_GID}" \
+		--ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
+		-e NVIDIA_VISIBLE_DEVICES="$gpu" \
+		-e CUDA_VISIBLE_DEVICES="$gpu" \
+		-e PYTHONUNBUFFERED=1 \
+		-e PYTORCH_ALLOC_CONF=expandable_segments:True \
+		-v "$model_path:/model:ro" \
+		"$IMAGE_VLLM" \
+		"${python_cmd[@]}"
+}
+
 cmd_test() {
 	echo -e "${BOLD}Running pytest inside Docker (CPU-only)${RESET}"
 	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm test \
@@ -400,11 +542,14 @@ cmd_help() {
 	echo -e "  ${BOLD}convert-qwen35${RESET} [--keep-fp16] <g> <o> <r>  Convert Qwen3.5 GGUF to safetensors"
 	echo -e "  ${BOLD}convert-glm47${RESET} [--keep-fp16] <g> <o> <r>  Convert GLM-4.7 / deepseek2 GGUF"
 	echo -e "  ${BOLD}convert-qwen3${RESET} [--keep-fp16] <g> <o> <r>   Convert Qwen3 GGUF to safetensors"
+	echo -e "  ${BOLD}convert-qwen36${RESET} [--keep-fp16] <g> <o> <r>  Convert Qwen3.6 GGUF to safetensors"
 	echo -e "  ${BOLD}verify${RESET} [--keep-fp16] <g> <c> <ref>   Verify Qwen3.5 conversion is bit-exact"
 	echo -e "  ${BOLD}verify-glm47${RESET} [--keep-fp16] <g> <c> <ref>  Verify GLM-4.7 conversion is bit-exact"
 	echo -e "  ${BOLD}verify-qwen3${RESET} <gguf> <converted_dir>       Verify Qwen3 conversion is bit-exact"
+	echo -e "  ${BOLD}verify-qwen36${RESET} [--keep-fp16] <g> <c> <ref> Verify Qwen3.6 conversion is bit-exact"
 	echo -e "  ${BOLD}inspect${RESET} <gguf> [gguf2...]     Dump GGUF metadata and tensor names"
 	echo -e "  ${BOLD}sanity${RESET} <model|gguf> [opts]    Run vLLM inference sanity check (GGUF or safetensors)"
+	echo -e "  ${BOLD}chat${RESET} <model_dir> [--bnb4]     Interactive chat with a model (BF16 or BNB-4bit)"
 	echo -e "         [--label X] [--quantize fp8] [--tp N] [--tokenizer /path] [--max-model-len N]"
 	echo -e "  ${BOLD}test${RESET} [pytest-args...]          Run unit tests inside Docker (CPU-only)"
 	echo -e "  ${BOLD}lint${RESET}                           Run ruff + mypy checks inside Docker (read-only)"
@@ -434,6 +579,10 @@ convert-qwen3)
 	shift
 	cmd_convert_qwen3 "$@"
 	;;
+convert-qwen36)
+	shift
+	cmd_convert_qwen36 "$@"
+	;;
 verify)
 	shift
 	cmd_verify "$@"
@@ -446,6 +595,10 @@ verify-qwen3)
 	shift
 	cmd_verify_qwen3 "$@"
 	;;
+verify-qwen36)
+	shift
+	cmd_verify_qwen36 "$@"
+	;;
 inspect)
 	shift
 	cmd_inspect "$@"
@@ -453,6 +606,10 @@ inspect)
 sanity)
 	shift
 	cmd_sanity "$@"
+	;;
+chat)
+	shift
+	cmd_chat "$@"
 	;;
 test)
 	shift

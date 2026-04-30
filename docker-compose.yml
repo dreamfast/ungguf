@@ -179,6 +179,62 @@ services:
       - --converted
       - /converted
 
+  convert-qwen36:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/output
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+      - CUDA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - gguf_to_safetensors_qwen36.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --output
+      - /output
+      - --reference-model
+      - /ref
+      - --shard-size-mb
+      - "${SHARD_SIZE_MB:-4500}"
+
+  verify-qwen36:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    runtime: nvidia
+    volumes:
+      - ${GGUF_DIR:-./gguf_input}:/input:ro
+      - ${OUTPUT_DIR:-./output}:/converted:ro
+      - ${REF_MODEL_DIR:-./reference_model}:/ref:ro
+      - ${RESULTS_DIR:-./results}:/results
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${GPU:-0}
+    command:
+      - python3
+      - verify_conversion_qwen36.py
+      - --gguf
+      - /input/${GGUF_FILE:-model.gguf}
+      - --converted
+      - /converted
+      - --reference
+      - /ref
+      - --output
+      - /results/qwen36_verification.json
+
   test:
     build:
       context: .
