@@ -187,6 +187,71 @@ cmd_convert_qwen36() {
 	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm convert-qwen36 "${cmd[@]}"
 }
 
+cmd_convert_qwen36_moe() {
+	local keep_fp16=false
+	if [[ "${1:-}" == "--keep-fp16" ]]; then
+		keep_fp16=true
+		shift
+	fi
+	[[ $# -ge 3 ]] || die "Usage: ungguf convert-qwen36-moe [--keep-fp16] <gguf_file> <output_dir> <ref_model_dir>"
+	local gguf_path="$1"
+	local output_dir="$2"
+	local ref_dir="$3"
+
+	local gguf_dir gguf_file
+	read -r gguf_dir gguf_file <<<"$(split_path "$gguf_path")"
+	output_dir="$(cd "$output_dir" && pwd)"
+	ref_dir="$(cd "$ref_dir" && pwd)"
+
+	export GPU="${GPU:-0}"
+	export SHARD_SIZE_MB="${SHARD_SIZE_MB:-4500}"
+	export GGUF_DIR="$gguf_dir"
+	export GGUF_FILE="$gguf_file"
+	export OUTPUT_DIR="$output_dir"
+	export REF_MODEL_DIR="$ref_dir"
+
+	local cmd=(python3 gguf_to_safetensors_qwen36_moe.py
+		--gguf "/input/$gguf_file" --output /output
+		--reference-model /ref --shard-size-mb "${SHARD_SIZE_MB:-4500}")
+	if $keep_fp16; then cmd+=(--keep-fp16); fi
+
+	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm convert-qwen36-moe "${cmd[@]}"
+}
+
+cmd_verify_qwen36_moe() {
+	local keep_fp16=false
+	if [[ "${1:-}" == "--keep-fp16" ]]; then
+		keep_fp16=true
+		shift
+	fi
+	[[ $# -ge 3 ]] || die "Usage: ungguf verify-qwen36-moe [--keep-fp16] <gguf_file> <converted_dir> <ref_model_dir> [results_dir]"
+	local gguf_path="$1"
+	local converted_dir="$2"
+	local ref_dir="$3"
+	local results_dir="${4:-$(pwd)/results}"
+
+	local gguf_dir gguf_file
+	read -r gguf_dir gguf_file <<<"$(split_path "$gguf_path")"
+	converted_dir="$(cd "$converted_dir" && pwd)"
+	ref_dir="$(cd "$ref_dir" && pwd)"
+	mkdir -p "$results_dir"
+	results_dir="$(cd "$results_dir" && pwd)"
+
+	export GPU="${GPU:-0}"
+	export GGUF_DIR="$gguf_dir"
+	export GGUF_FILE="$gguf_file"
+	export OUTPUT_DIR="$converted_dir"
+	export REF_MODEL_DIR="$ref_dir"
+	export RESULTS_DIR="$results_dir"
+
+	local cmd=(python3 verify_conversion_qwen36_moe.py
+		--gguf "/input/$gguf_file" --converted /converted
+		--reference /ref --output /results/qwen36_moe_verification.json)
+	if $keep_fp16; then cmd+=(--keep-fp16); fi
+
+	docker compose -f "$REPO_DIR/docker-compose.yml" run --rm verify-qwen36-moe "${cmd[@]}"
+}
+
 cmd_verify_qwen36() {
 	local keep_fp16=false
 	if [[ "${1:-}" == "--keep-fp16" ]]; then
@@ -543,10 +608,12 @@ cmd_help() {
 	echo -e "  ${BOLD}convert-glm47${RESET} [--keep-fp16] <g> <o> <r>  Convert GLM-4.7 / deepseek2 GGUF"
 	echo -e "  ${BOLD}convert-qwen3${RESET} [--keep-fp16] <g> <o> <r>   Convert Qwen3 GGUF to safetensors"
 	echo -e "  ${BOLD}convert-qwen36${RESET} [--keep-fp16] <g> <o> <r>  Convert Qwen3.6 GGUF to safetensors"
+	echo -e "  ${BOLD}convert-qwen36-moe${RESET} [--keep-fp16] <g> <o> <r>  Convert Qwen3.6-35B-A3B MoE GGUF"
 	echo -e "  ${BOLD}verify${RESET} [--keep-fp16] <g> <c> <ref>   Verify Qwen3.5 conversion is bit-exact"
 	echo -e "  ${BOLD}verify-glm47${RESET} [--keep-fp16] <g> <c> <ref>  Verify GLM-4.7 conversion is bit-exact"
 	echo -e "  ${BOLD}verify-qwen3${RESET} <gguf> <converted_dir>       Verify Qwen3 conversion is bit-exact"
 	echo -e "  ${BOLD}verify-qwen36${RESET} [--keep-fp16] <g> <c> <ref> Verify Qwen3.6 conversion is bit-exact"
+	echo -e "  ${BOLD}verify-qwen36-moe${RESET} [--keep-fp16] <g> <c> <ref> Verify Qwen3.6 MoE conversion is bit-exact"
 	echo -e "  ${BOLD}inspect${RESET} <gguf> [gguf2...]     Dump GGUF metadata and tensor names"
 	echo -e "  ${BOLD}sanity${RESET} <model|gguf> [opts]    Run vLLM inference sanity check (GGUF or safetensors)"
 	echo -e "  ${BOLD}chat${RESET} <model_dir> [--bnb4]     Interactive chat with a model (BF16 or BNB-4bit)"
@@ -583,6 +650,10 @@ convert-qwen36)
 	shift
 	cmd_convert_qwen36 "$@"
 	;;
+convert-qwen36-moe)
+	shift
+	cmd_convert_qwen36_moe "$@"
+	;;
 verify)
 	shift
 	cmd_verify "$@"
@@ -598,6 +669,10 @@ verify-qwen3)
 verify-qwen36)
 	shift
 	cmd_verify_qwen36 "$@"
+	;;
+verify-qwen36-moe)
+	shift
+	cmd_verify_qwen36_moe "$@"
 	;;
 inspect)
 	shift

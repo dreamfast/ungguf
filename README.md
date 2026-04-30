@@ -22,6 +22,8 @@ models can be loaded by HuggingFace-compatible inference engines such as vLLM.
 |---|---|---|---|
 | **Qwen3** | `convert-qwen3` | BF16, F16, F32, Q8_0, etc. | Standard GQA transformer with SwiGLU MLP. 1:1 tensor mapping. |
 | **Qwen3.5** | `convert-qwen35` | BF16, F16, F32, Q8_0, etc. | Hybrid Mamba2 + Transformer. Handles V-head reorder, norm-1.0 convention, A_log convention. |
+| **Qwen3.6** | `convert-qwen36` | BF16, F16, F32, Q8_0, etc. | Same hybrid architecture as Qwen3.5. Handles GGUF files that exclude MTP/vision tensors (copies from reference). |
+| **Qwen3.6-MoE** | `convert-qwen36-moe` | BF16, F16, F32, Q8_0, etc. | MoE hybrid (256 experts, 8 active). Expert 3D tensor reshape, GGML F-order reversal, V-head reorder. |
 | **GLM-4.7-Flash** | `convert-glm47` | BF16, F16, F32, Q8_0, etc. | DeepSeek2 architecture with MLA attention + MoE. Handles kv_b_proj reconstruction, 3D expert tensor splitting. |
 
 Quantized formats (Q8_0, Q4_K_M, etc.) are dequantized to bfloat16 during conversion. Use `--keep-fp16` to preserve float16 tensors when the source GGUF is FP16.
@@ -60,8 +62,14 @@ quantization — it just needs to be the same architecture with matching tensor 
 # Qwen3.5 example
 ./ungguf.sh convert-qwen35 model.gguf ./output ./reference_model
 
+# Qwen3.6 (dense) example
+./ungguf.sh convert-qwen36 model.gguf ./output ./reference_model
+
 # Qwen3 example
 ./ungguf.sh convert-qwen3 model.gguf ./output ./reference_model
+
+# Qwen3.6 MoE example
+./ungguf.sh convert-qwen36-moe model.gguf ./output ./reference_model
 
 # GLM-4.7 example
 ./ungguf.sh convert-glm47 model.gguf ./output ./reference_model
@@ -78,8 +86,14 @@ Bit-exact verification that every tensor in the GGUF matches the safetensors out
 # Qwen3.5
 ./ungguf.sh verify model.gguf ./output ./reference_model
 
+# Qwen3.6 (dense)
+./ungguf.sh verify-qwen36 model.gguf ./output ./reference_model
+
 # Qwen3
 ./ungguf.sh verify-qwen3 model.gguf ./output
+
+# Qwen3.6 MoE
+./ungguf.sh verify-qwen36-moe model.gguf ./output ./reference_model
 
 # GLM-4.7
 ./ungguf.sh verify-glm47 model.gguf ./output ./reference_model
@@ -125,9 +139,13 @@ ungguf <command> [args...]
 Commands:
   build [convert|inference]          Build Docker images (default: convert)
   convert-qwen35 [--keep-fp16] <g> <o> <r>  Convert Qwen3.5 GGUF to safetensors
+  convert-qwen36 [--keep-fp16] <g> <o> <r>  Convert Qwen3.6 (dense) GGUF to safetensors
+  convert-qwen36-moe [--keep-fp16] <g> <o> <r>  Convert Qwen3.6 MoE GGUF to safetensors
   convert-glm47  [--keep-fp16] <g> <o> <r>  Convert GLM-4.7 GGUF to safetensors
   convert-qwen3  [--keep-fp16] <g> <o> <r>  Convert Qwen3 GGUF to safetensors
   verify         [--keep-fp16] <g> <c> <r>  Verify Qwen3.5 conversion (bit-exact)
+  verify-qwen36  [--keep-fp16] <g> <c> <r>  Verify Qwen3.6 (dense) conversion (bit-exact)
+  verify-qwen36-moe [--keep-fp16] <g> <c> <r>  Verify Qwen3.6 MoE conversion (bit-exact)
   verify-glm47   [--keep-fp16] <g> <c> <r>  Verify GLM-4.7 conversion (bit-exact)
   verify-qwen3   [--keep-fp16] <g> <c>      Verify Qwen3 conversion (bit-exact)
   inspect        <gguf> [gguf2 ...]          Dump GGUF metadata and tensor layout
@@ -201,12 +219,17 @@ src/
   common.py                    Shared utilities (tensor decode, sharding, file copy)
   mappings_qwen3.py            Qwen3 tensor name mappings
   mappings_qwen35.py           Qwen3.5 tensor name mappings + V-head reorder
+  mappings_qwen36_moe.py       Qwen3.6 MoE tensor name mappings + expert builders
   mappings_glm47.py            GLM-4.7 tensor name mappings + kv_b reconstruction
   gguf_to_safetensors_qwen3.py    Qwen3 converter
   gguf_to_safetensors_qwen35.py   Qwen3.5 converter
+  gguf_to_safetensors_qwen36.py   Qwen3.6 (dense) converter
+  gguf_to_safetensors_qwen36_moe.py  Qwen3.6 MoE converter
   gguf_to_safetensors_glm47.py    GLM-4.7 converter
   verify_conversion_qwen3.py      Qwen3 bit-exact verifier
   verify_conversion_qwen35.py     Qwen3.5 bit-exact verifier
+  verify_conversion_qwen36.py     Qwen3.6 (dense) bit-exact verifier
+  verify_conversion_qwen36_moe.py Qwen3.6 MoE bit-exact verifier
   verify_conversion_glm47.py      GLM-4.7 bit-exact verifier
   verify_sha256.py                 SHA256 fingerprint comparator
   vllm_sanity.py                   vLLM inference sanity checker
